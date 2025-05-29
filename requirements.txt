@@ -1,0 +1,8 @@
+pandas>=2.2
+stanza>=1.7
+phonenumbers
+python-dateutil
+nameparser
+pyyaml
+sqlite-utils   # handy CLI, optional
+tqdm           # progress bar

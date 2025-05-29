@@ -1,0 +1,4 @@
+venv/
+*.db
+data_raw/
+__pycache__/
