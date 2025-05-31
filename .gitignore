@@ -2,3 +2,6 @@ venv/
 *.db
 data_raw/
 __pycache__/
+exports/
+upload/
+

@@ -1,8 +1,12 @@
-pandas>=2.2
-stanza>=1.7
+pandas
+pyarrow
+openpyxl
 phonenumbers
-python-dateutil
-nameparser
-pyyaml
-sqlite-utils   # handy CLI, optional
-tqdm           # progress bar
+regex
+tqdm
+spacy
+psycopg[binary,pool]
+fasttext
+rapidfuzz
+python-dotenv
+watchdog
