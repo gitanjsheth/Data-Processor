@@ -1,6 +1,7 @@
 import re
 import pandas as pd
 from pathlib import Path
+from scripts.landline_detector import remove_landline_patterns
 
 def extract_valid_phones(text: str) -> list[str]:
     """Extract and normalize phone numbers using specified rules"""
@@ -31,8 +32,11 @@ def extract_phones_from_chunk(text: str) -> list[str]:
     if not text:
         return []
     
+    # Remove landline patterns first, preserving mobile numbers
+    cleaned_text = remove_landline_patterns(text)
+    
     # Find all potential phone number chunks (digits with common separators)
-    chunks = re.findall(r'[\+\(\)]?[\d\s\-\(\)]{10,}', text)
+    chunks = re.findall(r'[\+\(\)]?[\d\s\-\(\)]{10,}', cleaned_text)
     
     valid_numbers = set()
     
