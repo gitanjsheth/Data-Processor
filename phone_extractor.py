@@ -1,5 +1,7 @@
 import re
 import pandas as pd
+import time
+import argparse
 from pathlib import Path
 from scripts.landline_detector import remove_landline_patterns
 
@@ -63,36 +65,141 @@ def extract_phones_from_chunk(text: str) -> list[str]:
     
     return list(valid_numbers)
 
-def process_excel(input_path: str, output_csv: str):
-    input_path = Path(input_path)
-    writer = pd.ExcelFile(input_path)
-    output_rows = []
+def process_excel(input_path: Path, output_path: Path):
+    """Process a single Excel file and extract phone numbers"""
+    start_time = time.time()
+    
+    try:
+        writer = pd.ExcelFile(input_path)
+        output_rows = []
+        dropped_rows = 0
 
-    for sheet in writer.sheet_names:
-        df = writer.parse(sheet, header=None, dtype=str)
-        for _, row in df.iterrows():
-            row_values = [str(cell) if pd.notna(cell) else "" for cell in row.tolist()]
-            
-            # Process each cell individually and collect all phone numbers
-            all_phones = set()
-            for cell_value in row_values:
-                if cell_value.strip():  # Skip empty cells
-                    phones = extract_valid_phones(cell_value)
-                    all_phones.update(phones)
-            
-            phone_note = ", ".join(sorted(all_phones)) if all_phones else "No phone number found"
-            output_rows.append(row_values + [phone_note])
+        for sheet in writer.sheet_names:
+            df = writer.parse(sheet, header=None, dtype=str)
+            for _, row in df.iterrows():
+                row_values = [str(cell) if pd.notna(cell) else "" for cell in row.tolist()]
+                
+                # Process each cell individually and collect all phone numbers
+                all_phones = set()
+                for cell_value in row_values:
+                    if cell_value.strip():  # Skip empty cells
+                        phones = extract_valid_phones(cell_value)
+                        all_phones.update(phones)
+                
+                # Quality control: Only add rows that have phone numbers AND not too many
+                if all_phones:
+                    if len(all_phones) <= 3:  # Maximum 3 phone numbers per row
+                        phone_result = ", ".join(sorted(all_phones))
+                        # Put phone_result first, then the original row data
+                        output_rows.append([phone_result] + row_values)
+                    else:
+                        # Drop rows with more than 3 phone numbers (likely malformed data)
+                        dropped_rows += 1
 
-    max_cols = max(len(row) for row in output_rows)
-    headers = [f"col_{i}" for i in range(max_cols - 1)] + ["phone_result"]
-    out_df = pd.DataFrame(output_rows, columns=headers)
-    out_df.to_csv(output_csv, index=False)
-    print(f"✅ Done. Output saved to {output_csv}")
+        end_time = time.time()
+        processing_time = end_time - start_time
 
-# Sample usage
-if __name__ == "__main__":
-    import sys
-    if len(sys.argv) != 3:
-        print("Usage: python phone_extractor.py input.xlsx output.csv")
+        if output_rows:  # Only create output if we have rows with phone numbers
+            max_cols = max(len(row) for row in output_rows)
+            # phone_result is now first column, followed by original columns
+            headers = ["phone_result"] + [f"col_{i}" for i in range(max_cols - 1)]
+            out_df = pd.DataFrame(output_rows, columns=headers)
+            out_df.to_csv(output_path, index=False)
+            print(f"✅ {input_path.name} -> {output_path.name} ({len(output_rows)} rows with phones)")
+            if dropped_rows > 0:
+                print(f"   ⚠️  Dropped {dropped_rows} rows with >3 phone numbers")
+        else:
+            print(f"❌ {input_path.name} -> No phone numbers found")
+            if dropped_rows > 0:
+                print(f"   ⚠️  {dropped_rows} rows were dropped due to having >3 phone numbers")
+        
+        print(f"   ⏱️  Processing time: {processing_time:.2f} seconds")
+        return len(output_rows) > 0
+        
+    except Exception as e:
+        print(f"❌ Error processing {input_path.name}: {e}")
+        return False
+
+def process_folder(input_folder: Path, output_folder: Path = None):
+    """Process all Excel files in a folder"""
+    if not input_folder.exists():
+        print(f"❌ Input folder does not exist: {input_folder}")
+        return
+    
+    if not input_folder.is_dir():
+        print(f"❌ Input path is not a folder: {input_folder}")
+        return
+    
+    # If no output folder specified, use the same as input folder
+    if output_folder is None:
+        output_folder = input_folder
     else:
-        process_excel(sys.argv[1], sys.argv[2])
+        output_folder.mkdir(parents=True, exist_ok=True)
+    
+    # Find all Excel files
+    excel_extensions = ['.xlsx', '.xls']
+    excel_files = []
+    for ext in excel_extensions:
+        excel_files.extend(input_folder.glob(f'*{ext}'))
+        excel_files.extend(input_folder.glob(f'*{ext.upper()}'))  # Also check uppercase
+    
+    if not excel_files:
+        print(f"❌ No Excel files found in {input_folder}")
+        return
+    
+    print(f"📁 Found {len(excel_files)} Excel file(s) in {input_folder}")
+    print("=" * 60)
+    
+    processed_count = 0
+    successful_count = 0
+    
+    for excel_file in sorted(excel_files):
+        # Skip temporary Excel files (start with ~$)
+        if excel_file.name.startswith('~$'):
+            continue
+            
+        processed_count += 1
+        
+        # Generate output filename: {input_filename}_conv.csv
+        output_filename = f"{excel_file.stem}_conv.csv"
+        output_path = output_folder / output_filename
+        
+        print(f"\n[{processed_count}/{len(excel_files)}] Processing: {excel_file.name}")
+        success = process_excel(excel_file, output_path)
+        if success:
+            successful_count += 1
+    
+    print("\n" + "=" * 60)
+    print(f"📊 Summary: {successful_count}/{processed_count} files processed successfully")
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Extract phone numbers from Excel files in a folder",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python phone_extractor.py test/
+  python phone_extractor.py test/ --output exports/
+  python phone_extractor.py /path/to/excel/files --output /path/to/output
+        """
+    )
+    
+    parser.add_argument(
+        "input_folder",
+        help="Path to folder containing Excel files"
+    )
+    
+    parser.add_argument(
+        "--output", "-o",
+        help="Output folder for CSV files (default: same as input folder)"
+    )
+    
+    args = parser.parse_args()
+    
+    input_folder = Path(args.input_folder)
+    output_folder = Path(args.output) if args.output else None
+    
+    process_folder(input_folder, output_folder)
+
+if __name__ == "__main__":
+    main()
