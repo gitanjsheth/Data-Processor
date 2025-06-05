@@ -10,3 +10,7 @@ fasttext
 rapidfuzz
 python-dotenv
 watchdog
+numpy
+joblib
+scikit-learn
+scipy

@@ -7,3 +7,6 @@ upload/
 test/
 .idea/
 .env
+dump/
+reserve/
+temp/

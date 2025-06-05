@@ -3,12 +3,10 @@ import pandas as pd
 import time
 import argparse
 from pathlib import Path
-from scripts.landline_detector import remove_landline_patterns
+from landline_detector import remove_landline_patterns
 
 def extract_valid_phones(text: str) -> list[str]:
     """Extract and normalize phone numbers using specified rules"""
-    if not text:
-        return []
     
     valid_numbers = set()
     
@@ -20,7 +18,10 @@ def extract_valid_phones(text: str) -> list[str]:
     for part in parts:
         part = part.strip()  # Remove leading/trailing whitespace
         if part:
-            valid_numbers.update(extract_phones_from_chunk(part))
+            # Count digits in this part
+            digit_count = len(re.sub(r'\D', '', part))
+            if digit_count >= 10:  # Only process parts with 10+ digits
+                valid_numbers.update(extract_phones_from_chunk(part))
     
     # Also process the original text with separators removed (joined version)
     # Remove "," but keep other separators (removed "/" from joining)
@@ -65,7 +66,7 @@ def extract_phones_from_chunk(text: str) -> list[str]:
     
     return list(valid_numbers)
 
-def process_excel(input_path: Path, output_path: Path):
+def process_excel(input_path: Path, output_path: Path) -> bool:
     """Process a single Excel file and extract phone numbers"""
     start_time = time.time()
     
@@ -83,8 +84,11 @@ def process_excel(input_path: Path, output_path: Path):
                 all_phones = set()
                 for cell_value in row_values:
                     if cell_value.strip():  # Skip empty cells
-                        phones = extract_valid_phones(cell_value)
-                        all_phones.update(phones)
+                        # Count digits in the cell
+                        digit_count = len(re.sub(r'\D', '', cell_value))
+                        if digit_count >= 10:  # Only process cells with 10+ digits
+                            phones = extract_valid_phones(cell_value)
+                            all_phones.update(phones)
                 
                 # Quality control: Only add rows that have phone numbers AND not too many
                 if all_phones:
@@ -110,8 +114,6 @@ def process_excel(input_path: Path, output_path: Path):
                 print(f"   ⚠️  Dropped {dropped_rows} rows with >3 phone numbers")
         else:
             print(f"❌ {input_path.name} -> No phone numbers found")
-            if dropped_rows > 0:
-                print(f"   ⚠️  {dropped_rows} rows were dropped due to having >3 phone numbers")
         
         print(f"   ⏱️  Processing time: {processing_time:.2f} seconds")
         return len(output_rows) > 0
@@ -160,8 +162,8 @@ def process_folder(input_folder: Path, output_folder: Path = None):
             
         processed_count += 1
         
-        # Generate output filename: {input_filename}_conv.csv
-        output_filename = f"{excel_file.stem}_conv.csv"
+        # Generate output filename: {input_filename}_num.csv
+        output_filename = f"{excel_file.stem}_num.csv"
         output_path = output_folder / output_filename
         
         print(f"\n[{processed_count}/{len(excel_files)}] Processing: {excel_file.name}")
